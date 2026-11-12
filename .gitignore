@@ -1,0 +1,16 @@
+.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+debug_hn.txt
+debug_hn2.txt
+debug_hn3.txt
+debug_check.py
+find_lever.py
+list_models.py
+test_hn.py
+check.py
+reset.py
+clear_cache.py
