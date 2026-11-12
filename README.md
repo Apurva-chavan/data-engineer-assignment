@@ -61,11 +61,20 @@ data/               # jobs.db (SQLite), jobs.csv, labeled_set.csv
 ### Tools Used
 
 - Amazon Q Developer (AI coding assistant) — used for scaffolding modules and suggesting Pydantic schema
-- OpenAI `gpt-4o-mini` — LLM extraction
+- Groq API (`qwen/qwen3.8-27b`) — LLM extraction (free tier, OpenAI-compatible)
 - All scraping, dedup, and storage logic written manually
 
 ### LLM Cost Results (from labeled run)
 
 See `data/quality_report.json` after running `python -m pipeline evaluate`.
 
-Approximate: ~$0.002 per posting × 200 postings ≈ **$0.40 total**.
+Groq free tier used — $0 cost. Equivalent OpenAI cost: ~$0.002 per posting × 40 postings ≈ **$0.08 total**.
+
+### Labeled Set Notes
+
+`data/labeled_set.csv` contains 35 postings (12 from HN, 21 from Greenhouse, 2 from Lever).
+Labels were verified against the raw text for each posting. Field-level accuracy from `quality_report.json`:
+- seniority: 100% (25/25), city: 100% (22/22), country: 100% (33/33)
+- remote_policy: 100% (18/18), employment_type: 100% (29/29)
+- salary_min/max: 100% (4/4) — most postings don't state salary
+- visa_sponsorship: 50% (1/2) — only 2 postings stated it
