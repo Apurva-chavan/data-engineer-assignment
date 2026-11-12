@@ -13,7 +13,7 @@ TOKENS = ["stripe", "airbnb", "databricks", "figma"]
 BASE_URL = "https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true"
 
 TARGET_TITLE_RE = re.compile(
-    r"\b(data engineer|ml engineer|machine learning engineer|analytics engineer|platform engineer|data platform|mlops)\b",
+    r"\b(data engineer|ml engineer|machine learning engineer|analytics engineer|platform engineer|data platform|mlops|data scientist|data infrastructure|ml platform|ml infra|data infra|applied scientist|applied ml|llm engineer|ai engineer|data reliability|analytics platform)\b",
     re.IGNORECASE,
 )
 
@@ -38,8 +38,20 @@ def strip_html(html: str) -> str:
 
 def _is_us(location: str) -> bool:
     loc = location.lower()
-    return any(k in loc for k in ["united states", "us", "usa", "remote", "new york", "san francisco",
-                                   "seattle", "austin", "chicago", "boston", "denver", "atlanta"])
+    # Explicit non-US exclusion
+    non_us = ["london", "uk", "berlin", "germany", "paris", "france", "toronto",
+              "canada", "amsterdam", "netherlands", "singapore", "india", "bangalore",
+              "barcelona", "spain", "dublin", "ireland", "sydney", "australia",
+              "cologne", "munich", "zurich", "switzerland", "poland", "warsaw"]
+    if any(k in loc for k in non_us):
+        return False
+    return any(k in loc for k in ["united states", " us ", "usa", "u.s.", "remote",
+                                   "new york", "san francisco", "seattle", "austin",
+                                   "chicago", "boston", "denver", "atlanta", "nyc",
+                                   "sf", "bay area", "los angeles", "la", "washington dc",
+                                   "philadelphia", "miami", "portland", "dallas",
+                                   "new york city", "mountain view", "palo alto",
+                                   "menlo park", "sunnyvale", "san jose", "bellevue"])
 
 
 def scrape() -> list[dict]:

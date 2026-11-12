@@ -15,11 +15,15 @@ HN_SUBMITTED = "https://news.ycombinator.com/submitted?id=whoishiring"
 HN_ITEM_BASE = "https://news.ycombinator.com/item?id="
 
 TARGET_RE = re.compile(
-    r"\b(data engineer|ml engineer|machine learning engineer|analytics engineer|platform engineer|data platform|mlops)\b",
+    r"\b(data engineer|ml engineer|machine learning engineer|analytics engineer|platform engineer|data platform|mlops|data scientist|data infrastructure|ml platform|ml infra|data infra|applied scientist|applied ml|llm engineer|ai engineer|data reliability|analytics platform)\b",
     re.IGNORECASE,
 )
 US_RE = re.compile(
-    r"\b(remote|united states|usa?|new york|san francisco|seattle|austin|chicago|boston|denver|atlanta|los angeles|nyc|sf|bay area)\b",
+    r"\b(remote|united states|usa?|u\.s\.|new york|san francisco|seattle|austin|chicago|boston|denver|atlanta|los angeles|nyc|sf|bay area|washington dc|philadelphia|miami|portland|dallas|mountain view|palo alto|menlo park|sunnyvale|san jose|bellevue)\b",
+    re.IGNORECASE,
+)
+NON_US_RE = re.compile(
+    r"\b(london|uk|berlin|germany|paris|france|toronto|canada|amsterdam|netherlands|singapore|india|bangalore|barcelona|spain|dublin|ireland|sydney|australia|cologne|munich|zurich|switzerland|poland|warsaw)\b",
     re.IGNORECASE,
 )
 
@@ -105,12 +109,16 @@ def scrape() -> list[dict]:
         text = comment["text"]
         if not TARGET_RE.search(text):
             continue
+        if NON_US_RE.search(text) and not US_RE.search(text):
+            continue
         if not US_RE.search(text):
             continue
 
         chunks = _split_roles(text)
         for chunk in chunks:
             if not TARGET_RE.search(chunk):
+                continue
+            if NON_US_RE.search(chunk) and not US_RE.search(chunk):
                 continue
             if not US_RE.search(chunk):
                 continue
