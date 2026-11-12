@@ -115,6 +115,9 @@ def run_evaluate() -> None:
                     continue
                 total[field] += 1
                 predicted = str(job.get(field) or "").strip()
+                # normalize bool representations
+                predicted = predicted.replace("1", "True").replace("0", "False")
+                label = label.replace("1", "True").replace("0", "False")
                 if predicted.lower() == label.lower():
                     correct[field] += 1
 
