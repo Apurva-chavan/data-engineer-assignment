@@ -7,7 +7,7 @@ pip install -r requirements.txt
 cp .env.example .env        # fill in OPENAI_API_KEY (Groq key works)
 python -m pipeline run      # scrape → extract → dedup → store
 python -m pipeline evaluate # field-level accuracy + cost report
-python -m pytest tests/ -v  # 20 unit tests
+python -m pytest tests/ -v  # 17 unit tests
 ```
 
 ## Sources
@@ -38,7 +38,7 @@ pipeline/
   __main__.py       # Entry point
 tests/
   test_dedup.py           # 10 dedup unit tests
-  test_change_history.py  # 10 upsert/history unit tests
+  test_change_history.py  # 7 upsert/history unit tests
 cache/              # Raw HTTP responses keyed by SHA-256(url), TTL=6h
 data/
   jobs.db           # SQLite canonical store
@@ -84,8 +84,8 @@ A field not stated in the posting is always null — never guessed. The `evidenc
 Every HTTP response is written to `cache/<sha256(url)>.json` before parsing. Re-runs skip the network entirely if cache is fresh (default TTL = 6h, configurable via `CACHE_TTL_HOURS`). This also lets you replay LLM extraction without re-scraping.
 
 ### 3. LLM Extraction
-- Provider: Groq API (OpenAI-compatible), model `qwen/qwen3.8-27b` (free tier)
-- HTML stripped to plain text, truncated to 12,000 chars before sending
+- Provider: Groq API (OpenAI-compatible), model `llama-3.3-70b-versatile` (free tier)
+- HTML stripped to plain text, truncated to 3,000 chars before sending
 - Greenhouse/Lever structured fields (title, company, location) filled from API directly; LLM handles free-text fields
 - For HN posts, company name is also extracted by the LLM (it appears at the start of each comment)
 - Output validated with Pydantic `RawExtraction`; validation errors fall back to null fields
@@ -114,17 +114,17 @@ Results from `data/quality_report.json`:
 
 | Field | Accuracy | Labeled |
 |-------|----------|---------|
-| seniority | 100% | 47 |
-| city | 100% | 41 |
-| country | 100% | 63 |
-| remote_policy | 100% | 46 |
-| salary_min | 100% | 12 |
-| salary_max | 100% | 11 |
-| currency | 100% | 13 |
-| employment_type | 100% | 61 |
-| visa_sponsorship | 22% | 9 |
+| seniority | 75.6% | 41 |
+| city | 72.2% | 36 |
+| country | 80.7% | 57 |
+| remote_policy | 86.1% | 43 |
+| salary_min | 75.0% | 12 |
+| salary_max | 72.7% | 11 |
+| currency | 76.9% | 13 |
+| employment_type | 82.1% | 56 |
+| visa_sponsorship | 100% | 8 |
 
-`visa_sponsorship` is low because most postings don't explicitly state it. The prompt requires explicit evidence; re-running after a fresh scrape with the updated prompt should improve this significantly.
+Accuracy ranges from 72–86% across structured fields. The LLM is instructed to return null rather than guess, so errors are mostly false negatives (field present in posting but not extracted) rather than hallucinations. `visa_sponsorship` hits 100% because the prompt requires explicit textual evidence before setting true/false.
 
 ### 7. LLM Cost
 
@@ -149,4 +149,4 @@ Groq free tier — **$0 cost**. Equivalent OpenAI `gpt-4o-mini` cost: ~$0.002/po
 ## Tools Used
 
 - **Amazon Q Developer** — AI coding assistant used throughout (scaffolding, debugging, prompt tuning)
-- **Groq API** (`qwen/qwen3.8-27b`) — LLM extraction, OpenAI-compatible, free tier
+- **Groq API** (`llama-3.3-70b-versatile`) — LLM extraction, OpenAI-compatible, free tier

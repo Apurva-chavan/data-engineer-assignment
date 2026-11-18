@@ -95,7 +95,7 @@ Rules:
 - evidence: for each non-null field, include the exact quote from the text that justifies it."""
 
 
-def _truncate(text: str, max_chars: int = 12000) -> str:
+def _truncate(text: str, max_chars: int = 3000) -> str:
     return text[:max_chars]
 
 
@@ -116,6 +116,7 @@ def extract(raw: dict) -> RawExtraction:
             ],
             response_format={"type": "json_object"},
             temperature=0,
+            max_tokens=500,
         )
         if resp.usage:
             _usage["input_tokens"] += resp.usage.prompt_tokens

@@ -1,21 +1,57 @@
 {
   "field_accuracy": {
-    "seniority": {"accuracy": 1.0, "correct": 47, "total": 47},
-    "city": {"accuracy": 1.0, "correct": 41, "total": 41},
-    "country": {"accuracy": 1.0, "correct": 63, "total": 63},
-    "remote_policy": {"accuracy": 1.0, "correct": 46, "total": 46},
-    "salary_min": {"accuracy": 1.0, "correct": 12, "total": 12},
-    "salary_max": {"accuracy": 1.0, "correct": 11, "total": 11},
-    "currency": {"accuracy": 1.0, "correct": 13, "total": 13},
-    "employment_type": {"accuracy": 1.0, "correct": 61, "total": 61},
-    "visa_sponsorship": {"accuracy": 0.2222, "correct": 2, "total": 9}
+    "seniority": {
+      "accuracy": 0.7561,
+      "correct": 31,
+      "total": 41
+    },
+    "city": {
+      "accuracy": 0.7222,
+      "correct": 26,
+      "total": 36
+    },
+    "country": {
+      "accuracy": 0.807,
+      "correct": 46,
+      "total": 57
+    },
+    "remote_policy": {
+      "accuracy": 0.8605,
+      "correct": 37,
+      "total": 43
+    },
+    "salary_min": {
+      "accuracy": 0.75,
+      "correct": 9,
+      "total": 12
+    },
+    "salary_max": {
+      "accuracy": 0.7273,
+      "correct": 8,
+      "total": 11
+    },
+    "currency": {
+      "accuracy": 0.7692,
+      "correct": 10,
+      "total": 13
+    },
+    "employment_type": {
+      "accuracy": 0.8214,
+      "correct": 46,
+      "total": 56
+    },
+    "visa_sponsorship": {
+      "accuracy": 1.0,
+      "correct": 8,
+      "total": 8
+    }
   },
   "llm_cost": {
-    "calls": 65,
-    "input_tokens": 198540,
-    "output_tokens": 32760,
+    "calls": 76,
+    "input_tokens": 70151,
+    "output_tokens": 19231,
     "total_cost_usd": 0.0,
     "cost_per_posting_usd": 0.0,
-    "note": "Groq free tier used; equivalent OpenAI gpt-4o-mini cost ~$0.002/posting x 65 postings = ~$0.13"
+    "note": "Groq free tier used; equivalent OpenAI gpt-4o-mini cost ~$0.002/posting"
   }
 }
