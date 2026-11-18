@@ -1,5 +1,6 @@
 """SQLite storage: canonical records + change history."""
 from __future__ import annotations
+import csv
 import json
 import logging
 import sqlite3
@@ -13,8 +14,8 @@ logger = logging.getLogger(__name__)
 DB_PATH = Path(__file__).parent.parent / "data" / "jobs.db"
 DB_PATH.parent.mkdir(exist_ok=True)
 
-TRACKED_FIELDS = {"title", "salary_min", "salary_max", "currency", "city", "country",
-                  "remote_policy", "status", "employment_type", "seniority"}
+TRACKED_FIELDS = ["title", "salary_min", "salary_max", "currency", "city", "country",
+                  "remote_policy", "status", "employment_type", "seniority"]
 
 
 def get_conn() -> sqlite3.Connection:
@@ -69,6 +70,23 @@ def _row_to_dict(row: sqlite3.Row) -> dict:
     return d
 
 
+def _vals_differ(old, new) -> bool:
+    """Compare two field values correctly, handling None and type differences."""
+    if new is None:
+        return False  # never overwrite with null
+    if old is None and new is not None:
+        return True
+    # Compare as same type to avoid "150000" != 150000.0 false positives
+    try:
+        if isinstance(new, float):
+            return float(old) != float(new)
+        if isinstance(new, bool):
+            return bool(old) != bool(new)
+    except (TypeError, ValueError):
+        pass
+    return str(old) != str(new)
+
+
 def upsert(conn: sqlite3.Connection, posting: JobPosting) -> str:
     """Insert or update a posting. Returns 'inserted', 'updated', or 'unchanged'."""
     existing_row = conn.execute(
@@ -106,20 +124,20 @@ def upsert(conn: sqlite3.Connection, posting: JobPosting) -> str:
         return "inserted"
 
     existing = _row_to_dict(existing_row)
-    diff = {}
-    for field in TRACKED_FIELDS:
-        old_val = existing.get(field)
-        new_val = getattr(posting, field, None)
-        if new_val is not None and str(old_val) != str(new_val):
-            diff[field] = {"old": old_val, "new": new_val}
 
     # Always merge source_urls
     existing_urls = set(existing.get("source_urls") or [])
     new_urls = set(posting.source_urls)
     merged_urls = list(existing_urls | new_urls)
 
+    diff = {}
+    for field in TRACKED_FIELDS:
+        old_val = existing.get(field)
+        new_val = getattr(posting, field, None)
+        if _vals_differ(old_val, new_val):
+            diff[field] = {"old": old_val, "new": new_val}
+
     if diff:
-        # Save history before update
         conn.execute(
             "INSERT INTO job_history (posting_id, changed_at, diff) VALUES (?,?,?)",
             (posting.posting_id, now, json.dumps(diff)),
@@ -134,7 +152,6 @@ def upsert(conn: sqlite3.Connection, posting: JobPosting) -> str:
         conn.commit()
         return "updated"
 
-    # No field changes but update last_seen + merge URLs
     conn.execute(
         "UPDATE jobs SET last_seen = ?, source_urls = ? WHERE posting_id = ?",
         (now, json.dumps(merged_urls), posting.posting_id),
@@ -149,7 +166,6 @@ def get_all(conn: sqlite3.Connection) -> list[dict]:
 
 
 def get_by_company_title(conn: sqlite3.Connection) -> list[dict]:
-    """Return all jobs for dedup lookup."""
     return get_all(conn)
 
 
@@ -171,7 +187,6 @@ def mark_closed(conn: sqlite3.Connection, posting_id: str) -> None:
 
 
 def export_csv(conn: sqlite3.Connection, path: str) -> None:
-    import csv
     rows = get_all(conn)
     if not rows:
         return
@@ -179,7 +194,6 @@ def export_csv(conn: sqlite3.Connection, path: str) -> None:
         writer = csv.DictWriter(f, fieldnames=rows[0].keys())
         writer.writeheader()
         for row in rows:
-            # Flatten lists for CSV
             for k in ("skills", "source_urls", "evidence"):
                 if isinstance(row.get(k), (list, dict)):
                     row[k] = json.dumps(row[k])

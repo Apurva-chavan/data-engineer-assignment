@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 def run_pipeline() -> None:
     from pipeline.scrapers import greenhouse, lever, hn
-    from pipeline.extractor import extract, build_posting
+    from pipeline.extractor import extract, build_posting, get_cost_stats
     from pipeline.dedup import find_duplicate, merge_into
     from pipeline import storage
 
@@ -30,7 +30,7 @@ def run_pipeline() -> None:
     now = datetime.now(timezone.utc)
     stats = {"inserted": 0, "updated": 0, "unchanged": 0, "deduped": 0, "errors": 0}
 
-    # Collect all raw postings
+    # Collect raw postings from all 3 sources
     all_raw: list[dict] = []
     for scraper in (greenhouse, lever, hn):
         try:
@@ -38,9 +38,9 @@ def run_pipeline() -> None:
         except Exception as e:
             logger.error("Scraper %s failed: %s", scraper.__name__, e)
 
-    logger.info("Total raw postings: %d", len(all_raw))
+    logger.info("Total raw postings collected: %d", len(all_raw))
 
-    # Track seen posting_ids this run to detect closed postings
+    # Track posting_ids seen this run to detect closed postings
     seen_ids: set[str] = set()
 
     for raw in all_raw:
@@ -52,19 +52,17 @@ def run_pipeline() -> None:
             stats["errors"] += 1
             continue
 
-        # Dedup against existing DB records
+        # Reload existing records each iteration so newly inserted records
+        # are visible for dedup within the same run
         existing_records = storage.get_by_company_title(conn)
         dup = find_duplicate(dict(posting), existing_records)
 
         if dup and dup["posting_id"] != posting.posting_id:
-            # Merge URLs into canonical record
+            # Duplicate found: merge source URLs into canonical record
             merged = merge_into(dup, dict(posting))
-            from pipeline.models import JobPosting
-            import json as _json
-            # Update source_urls on canonical
             conn.execute(
                 "UPDATE jobs SET source_urls = ?, last_seen = ? WHERE posting_id = ?",
-                (_json.dumps(merged["source_urls"]), now.isoformat(), dup["posting_id"]),
+                (json.dumps(merged["source_urls"]), now.isoformat(), dup["posting_id"]),
             )
             conn.commit()
             stats["deduped"] += 1
@@ -75,18 +73,26 @@ def run_pipeline() -> None:
         stats[result] += 1
         seen_ids.add(posting.posting_id)
 
-    logger.info("Run complete: %s", stats)
+    # Mark any previously-open posting not seen this run as closed
+    for job in storage.get_all(conn):
+        if job["status"] == "open" and job["posting_id"] not in seen_ids:
+            storage.mark_closed(conn, job["posting_id"])
+            stats["updated"] += 1
+            logger.info("Marked closed: %s", job["posting_id"])
 
-    # Export CSV
-    csv_path = str(Path(__file__).parent.parent / "data" / "jobs.csv")
-    storage.export_csv(conn, csv_path)
+    cost = get_cost_stats()
+    logger.info("Run complete: %s", stats)
+    logger.info("LLM cost this run: %s", cost)
+
+    storage.export_csv(conn, str(Path(__file__).parent.parent / "data" / "jobs.csv"))
     conn.close()
 
 
 def run_evaluate() -> None:
-    """Compute field-level accuracy against labeled_set.csv."""
+    """Compute field-level extraction accuracy against labeled_set.csv and report LLM cost."""
     import csv
     from pipeline import storage
+    from pipeline.extractor import get_cost_stats
 
     labeled_path = Path(__file__).parent.parent / "data" / "labeled_set.csv"
     if not labeled_path.exists():
@@ -111,27 +117,34 @@ def run_evaluate() -> None:
                 continue
             for field in fields:
                 label = row.get(f"label_{field}", "").strip()
-                if label == "":
+                if not label:
                     continue
                 total[field] += 1
-                predicted = str(job.get(field) or "").strip()
-                # normalize bool representations
+                predicted = str(job.get(field) if job.get(field) is not None else "").strip()
+                # Normalise bool representations: DB stores 0/1 integers
                 predicted = predicted.replace("1", "True").replace("0", "False")
                 label = label.replace("1", "True").replace("0", "False")
                 if predicted.lower() == label.lower():
                     correct[field] += 1
 
-    report = {}
+    field_accuracy = {}
     for f in fields:
         acc = correct[f] / total[f] if total[f] else None
-        report[f] = {"accuracy": acc, "correct": correct[f], "total": total[f]}
+        field_accuracy[f] = {"accuracy": round(acc, 4) if acc is not None else None,
+                              "correct": correct[f], "total": total[f]}
+
+    report = {
+        "field_accuracy": field_accuracy,
+        "llm_cost": get_cost_stats(),
+    }
 
     report_path = Path(__file__).parent.parent / "data" / "quality_report.json"
     report_path.write_text(json.dumps(report, indent=2))
     logger.info("Quality report written to %s", report_path)
-    for f, v in report.items():
+    for f, v in field_accuracy.items():
         if v["total"]:
-            logger.info("  %s: %.1f%% (%d/%d)", f, (v["accuracy"] or 0) * 100, v["correct"], v["total"])
+            logger.info("  %-20s %.1f%%  (%d/%d)",
+                        f, (v["accuracy"] or 0) * 100, v["correct"], v["total"])
 
 
 if __name__ == "__main__":

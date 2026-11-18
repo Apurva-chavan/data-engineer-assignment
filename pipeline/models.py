@@ -4,7 +4,6 @@ from typing import Optional
 from pydantic import BaseModel, field_validator
 import re
 
-
 SENIORITY = {"junior", "mid", "senior", "staff_plus"}
 REMOTE_POLICY = {"onsite", "hybrid", "remote"}
 EMPLOYMENT_TYPE = {"full_time", "contract", "intern"}
@@ -35,30 +34,22 @@ class JobPosting(BaseModel):
     @field_validator("seniority")
     @classmethod
     def validate_seniority(cls, v):
-        if v is not None and v not in SENIORITY:
-            return None
-        return v
+        return v if v in SENIORITY else None
 
     @field_validator("remote_policy")
     @classmethod
     def validate_remote_policy(cls, v):
-        if v is not None and v not in REMOTE_POLICY:
-            return None
-        return v
+        return v if v in REMOTE_POLICY else None
 
     @field_validator("employment_type")
     @classmethod
     def validate_employment_type(cls, v):
-        if v is not None and v not in EMPLOYMENT_TYPE:
-            return None
-        return v
+        return v if v in EMPLOYMENT_TYPE else None
 
     @field_validator("status")
     @classmethod
     def validate_status(cls, v):
-        if v not in STATUS:
-            return "open"
-        return v
+        return v if v in STATUS else "open"
 
     @field_validator("salary_min", "salary_max")
     @classmethod
@@ -77,6 +68,7 @@ class JobPosting(BaseModel):
 
 class RawExtraction(BaseModel):
     """LLM output before merging with structured API fields."""
+    company: Optional[str] = None
     seniority: Optional[str] = None
     city: Optional[str] = None
     country: Optional[str] = None

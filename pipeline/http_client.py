@@ -1,4 +1,4 @@
-"""Shared rate-limited HTTP client with caching, retry, and robots.txt respect."""
+"""Shared rate-limited HTTP client with disk caching, retry, and robots.txt respect."""
 from __future__ import annotations
 import hashlib
 import json
@@ -17,15 +17,14 @@ logger = logging.getLogger(__name__)
 CACHE_DIR = Path(__file__).parent.parent / "cache"
 CACHE_DIR.mkdir(exist_ok=True)
 CACHE_TTL = int(os.getenv("CACHE_TTL_HOURS", "6")) * 3600
+REQUEST_DELAY = 1.0  # max 1 request per second per domain
 
 _domain_last_request: dict[str, float] = {}
 _robots_cache: dict[str, RobotFileParser] = {}
-REQUEST_DELAY = 1.0  # seconds per domain
 
 
 def _cache_path(url: str) -> Path:
-    key = hashlib.sha256(url.encode()).hexdigest()
-    return CACHE_DIR / f"{key}.json"
+    return CACHE_DIR / f"{hashlib.sha256(url.encode()).hexdigest()}.json"
 
 
 def _is_cache_fresh(path: Path) -> bool:
@@ -33,10 +32,9 @@ def _is_cache_fresh(path: Path) -> bool:
 
 
 def _rate_limit(domain: str) -> None:
-    last = _domain_last_request.get(domain, 0)
-    wait = REQUEST_DELAY - (time.time() - last)
-    if wait > 0:
-        time.sleep(wait)
+    elapsed = time.time() - _domain_last_request.get(domain, 0)
+    if elapsed < REQUEST_DELAY:
+        time.sleep(REQUEST_DELAY - elapsed)
     _domain_last_request[domain] = time.time()
 
 
@@ -47,16 +45,14 @@ def _get_robots(domain: str) -> RobotFileParser:
             rp.set_url(f"https://{domain}/robots.txt")
             rp.read()
         except Exception:
-            pass
+            pass  # if robots.txt is unreachable, allow by default
         _robots_cache[domain] = rp
     return _robots_cache[domain]
 
 
 def _can_fetch(url: str) -> bool:
-    parsed = urlparse(url)
-    domain = parsed.netloc
-    rp = _get_robots(domain)
-    return rp.can_fetch("*", url)
+    domain = urlparse(url).netloc
+    return _get_robots(domain).can_fetch("*", url)
 
 
 @retry(
@@ -70,18 +66,21 @@ def _do_request(url: str, headers: dict) -> requests.Response:
 
 
 def fetch(url: str, force_refresh: bool = False) -> tuple[str, str]:
-    """Return (content, content_type). Uses disk cache."""
+    """Fetch URL, returning (content, content_type). Caches to disk.
+
+    Respects robots.txt, enforces 1 req/s per domain, retries with backoff.
+    Returns ("", "text/plain") on any failure — never raises.
+    """
     cache_path = _cache_path(url)
     if not force_refresh and _is_cache_fresh(cache_path):
         cached = json.loads(cache_path.read_text(encoding="utf-8"))
         return cached["content"], cached["content_type"]
 
-    domain = urlparse(url).netloc
     if not _can_fetch(url):
         logger.warning("robots.txt disallows %s", url)
         return "", "text/plain"
 
-    _rate_limit(domain)
+    _rate_limit(urlparse(url).netloc)
     try:
         resp = _do_request(url, headers={"User-Agent": "JobPipelineBot/1.0 (research)"})
         resp.raise_for_status()

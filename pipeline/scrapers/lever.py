@@ -1,4 +1,4 @@
-"""Lever JSON API scraper."""
+"""Lever JSON API scraper for data/ML engineering roles at US tech companies."""
 from __future__ import annotations
 import hashlib
 import json
@@ -10,6 +10,8 @@ from pipeline.scrapers.greenhouse import strip_html, _is_us, TARGET_TITLE_RE
 
 logger = logging.getLogger(__name__)
 
+# Lever board slugs for target companies
+# Note: 'plaid' returns 404 (migrated ATS); replaced with 'neon' (Neon Serverless Postgres)
 SITES = ["palantir", "neon"]
 BASE_URL = "https://api.lever.co/v0/postings/{site}?mode=json"
 
@@ -20,10 +22,10 @@ def scrape() -> list[dict]:
         url = BASE_URL.format(site=site)
         content, ctype = fetch(url)
         if not content:
-            logger.warning("Lever: empty response for site %s", site)
+            logger.warning("Lever: empty response for %s", site)
             continue
 
-        # Lever sometimes returns HTML instead of JSON
+        # Lever occasionally returns HTML error pages instead of JSON
         if "text/html" in ctype or content.strip().startswith("<"):
             logger.warning("Lever: got HTML for %s, skipping", site)
             continue
@@ -34,8 +36,10 @@ def scrape() -> list[dict]:
             logger.error("Lever: JSON parse error for %s: %s", site, e)
             continue
 
+        if isinstance(jobs, dict):
+            jobs = jobs.get("postings", [])
         if not isinstance(jobs, list):
-            jobs = jobs.get("postings", []) if isinstance(jobs, dict) else []
+            jobs = []
 
         logger.info("Lever %s: %d total jobs", site, len(jobs))
         for job in jobs:
@@ -48,14 +52,11 @@ def scrape() -> list[dict]:
             if not _is_us(location):
                 continue
 
-            # Lever description is nested
-            description_html = ""
-            lists = job.get("lists", [])
-            for lst in lists:
-                description_html += lst.get("content", "")
-            description_html += job.get("descriptionPlain", "") or strip_html(job.get("description", ""))
+            # Lever description is split across lists + descriptionPlain
+            parts = [lst.get("content", "") for lst in job.get("lists", [])]
+            parts.append(job.get("descriptionPlain", "") or strip_html(job.get("description", "")))
+            raw_text = re.sub(r"\s+", " ", strip_html(" ".join(parts)))[:4000]
 
-            raw_text = re.sub(r"\s+", " ", strip_html(description_html))[:4000]
             external_id = job.get("id", "")
             posting_id = "lv_" + hashlib.sha256(f"{site}_{external_id}".encode()).hexdigest()[:16]
 

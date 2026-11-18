@@ -1,6 +1,7 @@
-"""Greenhouse JSON API scraper."""
+"""Greenhouse JSON API scraper for data/ML engineering roles at US tech companies."""
 from __future__ import annotations
 import hashlib
+import json
 import logging
 import re
 from html.parser import HTMLParser
@@ -9,13 +10,38 @@ from pipeline.http_client import fetch
 
 logger = logging.getLogger(__name__)
 
+# Greenhouse board tokens for target companies
 TOKENS = ["stripe", "airbnb", "databricks", "figma"]
 BASE_URL = "https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true"
 
 TARGET_TITLE_RE = re.compile(
-    r"\b(data engineer|ml engineer|machine learning engineer|analytics engineer|platform engineer|data platform|mlops|data scientist|data infrastructure|ml platform|ml infra|data infra|applied scientist|applied ml|llm engineer|ai engineer|data reliability|analytics platform)\b",
+    r"\b(data engineer|ml engineer|machine learning engineer|analytics engineer|"
+    r"platform engineer|data platform|mlops|data scientist|data infrastructure|"
+    r"ml platform|ml infra|data infra|applied scientist|applied ml|llm engineer|"
+    r"ai engineer|data reliability|analytics platform)\b",
     re.IGNORECASE,
 )
+
+_NON_US = [
+    "london", " uk", "berlin", "germany", "paris", "france", "toronto",
+    "canada", "amsterdam", "netherlands", "singapore", "india", "bangalore",
+    "barcelona", "spain", "dublin", "ireland", "sydney", "australia",
+    "cologne", "munich", "zurich", "switzerland", "poland", "warsaw",
+]
+_US = [
+    "united states", " us ", "usa", "u.s.", "remote",
+    "new york", "san francisco", "seattle", "austin", "chicago", "boston",
+    "denver", "atlanta", "nyc", "sf", "bay area", "los angeles",
+    "washington dc", "philadelphia", "miami", "portland", "dallas",
+    "mountain view", "palo alto", "menlo park", "sunnyvale", "san jose", "bellevue",
+]
+
+
+def _is_us(location: str) -> bool:
+    loc = location.lower()
+    if any(k in loc for k in _NON_US):
+        return False
+    return any(k in loc for k in _US)
 
 
 class _HTMLStripper(HTMLParser):
@@ -36,34 +62,15 @@ def strip_html(html: str) -> str:
     return re.sub(r"\s+", " ", s.get_text()).strip()
 
 
-def _is_us(location: str) -> bool:
-    loc = location.lower()
-    # Explicit non-US exclusion
-    non_us = ["london", "uk", "berlin", "germany", "paris", "france", "toronto",
-              "canada", "amsterdam", "netherlands", "singapore", "india", "bangalore",
-              "barcelona", "spain", "dublin", "ireland", "sydney", "australia",
-              "cologne", "munich", "zurich", "switzerland", "poland", "warsaw"]
-    if any(k in loc for k in non_us):
-        return False
-    return any(k in loc for k in ["united states", " us ", "usa", "u.s.", "remote",
-                                   "new york", "san francisco", "seattle", "austin",
-                                   "chicago", "boston", "denver", "atlanta", "nyc",
-                                   "sf", "bay area", "los angeles", "la", "washington dc",
-                                   "philadelphia", "miami", "portland", "dallas",
-                                   "new york city", "mountain view", "palo alto",
-                                   "menlo park", "sunnyvale", "san jose", "bellevue"])
-
-
 def scrape() -> list[dict]:
     results = []
     for token in TOKENS:
         url = BASE_URL.format(token=token)
-        content, ctype = fetch(url)
+        content, _ = fetch(url)
         if not content:
-            logger.warning("Greenhouse: empty response for token %s", token)
+            logger.warning("Greenhouse: empty response for %s", token)
             continue
         try:
-            import json
             data = json.loads(content)
         except Exception as e:
             logger.error("Greenhouse: JSON parse error for %s: %s", token, e)
@@ -79,11 +86,7 @@ def scrape() -> list[dict]:
             if not _is_us(location):
                 continue
 
-            description_html = ""
-            if isinstance(job.get("content"), str):
-                description_html = job["content"]
-
-            raw_text = strip_html(description_html)[:4000]
+            raw_text = strip_html(job.get("content", "") or "")[:4000]
             external_id = str(job.get("id", ""))
             posting_id = "gh_" + hashlib.sha256(f"{token}_{external_id}".encode()).hexdigest()[:16]
 
